@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>大荒域：凡塵問仙 Alpha 0.4</title>
+<style>
+:root{--bg:#0b1016;--panel:#151c24;--panel2:#10161e;--line:#2b3643;--text:#edf1f5;--muted:#9ba8b6;--gold:#d8b56a;--good:#77bf8b;--bad:#dc7b7b;--info:#7eb1df;--rare:#ba9be9}
+*{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at top,#182330,#0b1016 45%);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",sans-serif}
+button,input,select{font:inherit} button{background:#222d39;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 12px;cursor:pointer}button.primary{background:#6c5425;border-color:#9b7937}button.danger{background:#52282a}button:disabled{opacity:.45;cursor:not-allowed}
+.app{max-width:1020px;margin:auto;padding:12px}.header{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px}.brand h1{font-size:21px;color:var(--gold);margin:0}.muted{color:var(--muted)}
+.card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:0 10px 30px #0003}.screen{min-height:420px}.title{font-size:24px;color:var(--gold);margin-bottom:5px}.subtitle{color:var(--muted);margin-bottom:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.kv{display:grid;grid-template-columns:90px 1fr;gap:5px 10px;font-size:14px}.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.stat,.choice,.box{border:1px solid var(--line);border-radius:11px;background:#111923;padding:10px}.stat b{float:right}.choice{margin:9px 0}.choice h4,.box h4{margin:0 0 5px}.choice p,.box p{margin:4px 0;color:#c0cad4;line-height:1.55}.pill{display:inline-block;padding:3px 7px;border:1px solid var(--line);border-radius:999px;margin:2px;font-size:12px}.notice{padding:10px;border-left:3px solid var(--gold);background:#201b12;border-radius:8px;color:#e4d0a3}
+.log{max-height:360px;overflow:auto;font-size:13px;line-height:1.55}.entry{padding:6px 0;border-bottom:1px dashed #293440}.good{color:var(--good)}.bad{color:var(--bad)}.info{color:var(--info)}.rare{color:var(--rare)}
+.progress{height:9px;background:#242e39;border-radius:99px;overflow:hidden}.progress span{height:100%;display:block;background:linear-gradient(90deg,#846832,#d3af59)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}.tabs button.active{border-color:var(--gold);color:var(--gold)}
+.map{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.place{border:1px solid var(--line);border-radius:12px;padding:11px;background:#111923}.place.current{border-color:var(--gold)}
+.combat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.hpbar span{background:linear-gradient(90deg,#7a3232,#cb6464)}.qibar span{background:linear-gradient(90deg,#2e5278,#5a9bd1)}
+.small{font-size:12px}.gold{color:var(--gold)}
+@media(max-width:680px){.stat-grid,.map,.combat-grid{grid-template-columns:1fr}.header{align-items:flex-start}.kv{grid-template-columns:76px 1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+ <div class="header">
+  <div class="brand"><h1>大荒域：凡塵問仙</h1><span class="muted">Alpha 0.4 · 任務／夥伴／戰鬥</span></div>
+  <div class="row"><button onclick="saveGame()">儲存</button><button onclick="loadGame()">讀取</button><button class="danger" onclick="newGame()">新局</button></div>
+ </div>
+ <main class="card">
+  <div id="summary"></div>
+  <hr style="border-color:var(--line);border-width:1px 0 0;margin:14px 0">
+  <div id="screen" class="screen"></div>
+  <hr style="border-color:var(--line);border-width:1px 0 0;margin:18px 0 12px">
+  <h3>人生經歷</h3><div id="log" class="log"></div>
+ </main>
+</div>
+<script>
+const STAT_NAMES={hp:"體力",str:"力量",spd:"速度",qi:"氣根",wis:"悟性",cha:"魅力"};
+const ROOTS=["金","木","水","火","土"], ROOT_COST={1:10,2:6,3:3,4:1,5:0}, STAT_COST={4:1,5:1,6:1,7:2,8:2,9:3,10:4};
+const WORLDS={
+ "天元城":{region:"中州",type:"巨城",danger:0},
+ "安平鎮":{region:"中州",type:"城鎮",danger:0},
+ "望月城":{region:"中州",type:"港城",danger:1},
+ "青雲城":{region:"中州",type:"邊城",danger:1},
+ "天機城":{region:"中州",type:"修士城",danger:1},
+ "天元河":{region:"中州",type:"野外",danger:2},
+ "百草山脈":{region:"南疆",type:"野外",danger:2},
+ "藥王谷":{region:"南疆",type:"宗門",danger:0},
+ "萬毒沼澤":{region:"南疆",type:"野外",danger:4},
+ "南蠻森林":{region:"南疆",type:"野外",danger:3},
+ "神策府":{region:"中州",type:"宗門",danger:0},
+ "鎮妖關":{region:"中北",type:"要塞",danger:3},
+ "劍嶺鎮":{region:"北境",type:"城鎮",danger:1},
+ "太虛劍宗":{region:"北境",type:"宗門",danger:0},
+ "寒骨原":{region:"北境",type:"野外",danger:3},
+ "極北冰原":{region:"北境",type:"禁地",danger:5},
+ "鳳沙城":{region:"西境",type:"大城",danger:1},
+ "梵天禪院":{region:"西境",type:"宗門",danger:0},
+ "大荒沙海":{region:"西境",type:"野外",danger:3},
+ "赤淵":{region:"西南魔域",type:"魔域",danger:5},
+ "血炎谷":{region:"西南魔域",type:"野外",danger:4},
+ "黑霧山脈":{region:"東北幽域",type:"野外",danger:4},
+ "血月谷":{region:"東北幽域",type:"野外",danger:4},
+ "東海":{region:"東海",type:"海域",danger:3},
+ "雲海群島":{region:"東海",type:"群島",danger:2},
+ "流雲島":{region:"東海",type:"島城",danger:1}
+};
+const ROUTES={
+ "天元城":{"安平鎮":4,"望月城":9,"青雲城":8,"天機城":7,"天元河":2,"劍嶺鎮":14,"鳳沙城":16},
+ "安平鎮":{"天元城":4,"天元河":3,"青雲城":8},
+ "望月城":{"天元城":9,"東海":3,"流雲島":8},
+ "青雲城":{"天元城":8,"安平鎮":8,"百草山脈":3,"藥王谷":5,"南蠻森林":8},
+ "天機城":{"天元城":7,"神策府":2,"鎮妖關":8},
+ "天元河":{"天元城":2,"安平鎮":3,"望月城":7},
+ "百草山脈":{"青雲城":3,"藥王谷":4,"萬毒沼澤":7,"南蠻森林":6},
+ "藥王谷":{"青雲城":5,"百草山脈":4},
+ "萬毒沼澤":{"百草山脈":7,"南蠻森林":5},
+ "南蠻森林":{"青雲城":8,"百草山脈":6,"萬毒沼澤":5},
+ "神策府":{"天機城":2},
+ "鎮妖關":{"天機城":8,"劍嶺鎮":10,"黑霧山脈":12},
+ "劍嶺鎮":{"天元城":14,"太虛劍宗":2,"寒骨原":6,"鎮妖關":10},
+ "太虛劍宗":{"劍嶺鎮":2},
+ "寒骨原":{"劍嶺鎮":6,"極北冰原":10},
+ "極北冰原":{"寒骨原":10},
+ "鳳沙城":{"天元城":16,"梵天禪院":4,"大荒沙海":3},
+ "梵天禪院":{"鳳沙城":4},
+ "大荒沙海":{"鳳沙城":3,"血炎谷":12},
+ "赤淵":{"血炎谷":5},
+ "血炎谷":{"大荒沙海":12,"赤淵":5},
+ "黑霧山脈":{"鎮妖關":12,"血月谷":6},
+ "血月谷":{"黑霧山脈":6},
+ "東海":{"望月城":3,"雲海群島":8,"流雲島":6},
+ "雲海群島":{"東海":8,"流雲島":3},
+ "流雲島":{"望月城":8,"東海":6,"雲海群島":3}
+};
+const SKILLS={
+ "火球術":{qi:8,power:16,desc:"凝聚火靈力攻擊單一敵人。"},
+ "金刃斬":{qi:10,power:19,desc:"以金氣凝成鋒刃，偏重殺傷。"},
+ "水箭術":{qi:7,power:14,desc:"靈力消耗較低的遠程術法。"},
+ "震山拳":{qi:6,power:15,desc:"以肉身與靈力一同爆發。"},
+ "疾風步":{qi:7,power:0,desc:"本回合提高閃避並增加逃跑成功率。",utility:"escape"},
+ "回春術":{qi:12,power:-18,desc:"恢復自身生命。",utility:"heal"}
+};
+const GIFTS=[
+ {name:"糖漬靈梅",price:4,aff:4},
+ {name:"青玉簪",price:18,aff:10},
+ {name:"百花釀",price:9,aff:6},
+ {name:"劍穗",price:7,aff:5}
+];
+const NPC_TEMPLATES=[
+ {name:"蘇璃",gender:"女",romance:true,style:"醫修",home:"青雲城",personality:"溫和而有主見"},
+ {name:"顧寒",gender:"男",romance:false,style:"劍修",home:"劍嶺鎮",personality:"沉默寡言"},
+ {name:"沈棠",gender:"女",romance:true,style:"散修",home:"望月城",personality:"爽朗好奇"},
+ {name:"陳青",gender:"男",romance:false,style:"符修",home:"天機城",personality:"嘴碎但可靠"},
+ {name:"葉清竹",gender:"女",romance:true,style:"劍修",home:"劍嶺鎮",personality:"冷靜自律"}
+];
+let G;
+
+function fresh(){return {
+ version:"0.4",phase:"create",name:"無名",year:742,month:4,day:1,ageYears:0,ageMonths:0,
+ bg:null,bgCost:0,stats:{hp:3,str:3,spd:3,qi:3,wis:3,cha:3},roots:[],traits:[],lifeSkills:[],
+ events:[],realm:"凡人",cult:0,place:null,sect:null,spiritStones:0,
+ inventory:[{name:"布衣",type:"armor"},{name:"木劍",type:"weapon",atk:1}],
+ skillBooks:[],learnedSkills:[],equippedWeapon:{name:"木劍",atk:1},titles:[],treasures:[],
+ quests:[],companions:[],activeCompanion:null,partner:null,
+ explored:{},discovered:["天元城","安平鎮","望月城","青雲城","天機城","天元河","劍嶺鎮","鳳沙城"],
+ flags:{},rep:0,alive:true,combat:null
+}}
+function rand(n){return Math.floor(Math.random()*n)}
+function pick(a){return a[rand(a.length)]}
+function chance(p){return Math.random()<p}
+function clamp(x,a,b){return Math.max(a,Math.min(b,x))}
+function addLog(t,c=""){G.events.unshift({t,c,y:G.year,m:G.month,d:G.day,ay:G.ageYears,am:G.ageMonths})}
+function advanceDays(n){for(let i=0;i<n;i++){G.day++;if(G.day>30){G.day=1;G.month++;G.ageMonths++;if(G.ageMonths>=12){G.ageMonths=0;G.ageYears++}if(G.month>12){G.month=1;G.year++}}}}
+function fmtDate(){return `大曆${G.year}年${G.month}月${G.day}日`}
+function fmtAge(){return `${G.ageYears}歲${G.ageMonths?G.ageMonths+"個月":""}`}
+function addTrait(x){if(!G.traits.includes(x))G.traits.push(x)}
+function addLifeSkill(x){if(!G.lifeSkills.includes(x))G.lifeSkills.push(x)}
+function discover(x){if(WORLDS[x]&&!G.discovered.includes(x))G.discovered.push(x)}
+function setScreen(x){document.getElementById("screen").innerHTML=x}
+function render(){summary();logs();if(!G.alive)return death();if(G.combat)return combatUI();if(G.phase==="create")createUI();else if(G.phase.startsWith("age"))ageUI(+G.phase.slice(3));else if(G.phase==="test")testUI();else if(G.phase==="route")routeUI();else if(G.phase==="world")worldUI(G.flags.lastTab||"travel")}
+function summary(){document.getElementById("summary").innerHTML=`
+<div class="kv">
+<span class="muted">姓名</span><b>${G.name}</b>
+<span class="muted">年齡</span><span>${fmtAge()}</span>
+<span class="muted">年代</span><span>${fmtDate()}</span>
+<span class="muted">境界</span><span>${G.realm}</span>
+<span class="muted">所在地</span><span>${G.place||"未定"}</span>
+<span class="muted">靈石</span><span>${G.spiritStones}</span>
+</div>
+<div class="stat-grid" style="margin-top:10px">${Object.entries(G.stats).map(([k,v])=>`<div class="stat">${STAT_NAMES[k]}<b>${v}</b></div>`).join("")}</div>
+<div style="margin-top:8px">${G.titles.map(t=>`<span class="pill gold">【${t.name}】</span>`).join("")}${G.traits.map(x=>`<span class="pill">${x}</span>`).join("")}</div>`}
+function logs(){document.getElementById("log").innerHTML=G.events.slice(0,80).map(e=>`<div class="entry ${e.c}"><span class="muted">大曆${e.y}年${e.m}月${e.d}日 · ${e.ay}歲${e.am?e.am+"個月":""}</span>　${e.t}</div>`).join("")||'<span class="muted">尚無紀錄。</span>'}
+
+/* Creation / childhood */
+function totalStat(){let t=0;for(const v of Object.values(G.stats))for(let x=4;x<=v;x++)t+=STAT_COST[x]||0;return t}
+function rootCost(){return G.roots.length?ROOT_COST[G.roots.length]:0}
+function remain(){return 20-G.bgCost-totalStat()-rootCost()}
+function rootType(){return ["","真靈根","雙靈根","三靈根","偽靈根","五行雜靈根"][G.roots.length]||"未選"}
+function createUI(){setScreen(`<div class="title">角色創建</div><div class="subtitle">命格剩餘：${remain()}</div>
+<input id="nm" placeholder="角色姓名" style="padding:9px;background:#0e151d;color:white;border:1px solid var(--line);border-radius:9px">
+<h3>出生</h3><div class="row"><button onclick="bg('貧寒之家',0)">貧寒之家</button><button onclick="bg('富貴之家',4)">富貴之家（4）</button></div>
+<h3>六維</h3>${Object.keys(G.stats).map(k=>`<div class="choice">${STAT_NAMES[k]}：<b>${G.stats[k]}</b> <button onclick="sd('${k}',-1)">−</button><button onclick="sd('${k}',1)">＋</button></div>`).join("")}
+<h3>靈根：${rootType()}</h3><div class="row">${ROOTS.map(r=>`<button onclick="rt('${r}')" style="${G.roots.includes(r)?"border-color:var(--gold)":""}">${r}</button>`).join("")}</div>
+<p>靈根消耗：${rootCost()}　剩餘命格：${remain()}</p>
+<button class="primary" ${G.bg&&G.roots.length&&remain()>=0?"":"disabled"} onclick="born()">開始人生</button>`)}
+function bg(x,c){G.bg=x;G.bgCost=c;render()}
+function sd(k,n){let old=G.stats[k];G.stats[k]=clamp(old+n,3,10);if(remain()<0)G.stats[k]=old;render()}
+function rt(r){G.roots.includes(r)?G.roots=G.roots.filter(x=>x!==r):G.roots.push(r);if(remain()<0)G.roots=G.roots.filter(x=>x!==r);render()}
+function born(){let n=document.getElementById("nm").value.trim();if(n)G.name=n;G.place="安平鎮";G.ageYears=5;G.year=747;G.phase="age5";addLog(`出生於${G.bg}。`,"info");render()}
+const EVENTS={
+5:["林中獸影","你與同齡玩伴在林間撞上一頭受傷妖獸。",[["擋在朋友前面","brave"],["一起逃跑","run"],["自己逃跑","solo"],["觀察妖獸","observe"]]],
+8:["村中武師","一名退伍武師願意教附近孩子一些本事。",[["學拳","fist"],["學身法","move"],["學弓","bow"],["不學","none"]]],
+11:["未來的路","家裡開始考慮你將來靠什麼生活。",[["習武","martial"],["讀書","study"],["學醫","medicine"],["經商","trade"],["狩獵","hunt"]]],
+13:["災難","洪水突然沖進附近村落，你只能先做一件事。",[["救家人","family"],["救朋友","friend"],["幫助村民","village"],["保住財物","goods"],["逃離","flee"]]],
+15:["受傷修士","荒野中，一名重傷修士倒在路旁，飛劍仍懸在身側。",[["救他","save"],["搜他的東西","loot"],["找人幫忙","help"],["殺人奪寶","kill"],["離開","leave"]]]
+};
+function ageUI(a){let e=EVENTS[a];setScreen(`<div class="title">${a}歲 · ${e[0]}</div><p style="font-size:18px;line-height:1.7">${e[1]}</p>${e[2].map((c,i)=>`<div class="choice"><h4>${i+1}. ${c[0]}</h4><button onclick="ageChoice('${c[1]}')">選擇</button></div>`).join("")}`)}
+function ageChoice(c){
+ if(c==="brave"){addTrait("勇敢");G.stats.hp++;addLog("你擋在朋友前面，肩上留下傷痕。","good")}
+ if(c==="run"){addTrait("謹慎");addLog("你拉著朋友一起逃回村裡。")}
+ if(c==="solo"){addTrait("自保");addLog("你選擇獨自逃走。","bad")}
+ if(c==="observe"){G.stats.wis++;addTrait("好奇");addLog("你看出妖獸受傷，找到安全退路。","good")}
+ if(c==="fist"){addLifeSkill("基礎拳腳");G.stats.str++} if(c==="move"){addLifeSkill("基礎身法");G.stats.spd++} if(c==="bow"){addLifeSkill("基礎弓術");G.stats.str++}
+ if(c==="martial"){addLifeSkill("凡俗武藝");G.stats.hp++} if(c==="study"){addLifeSkill("識文斷字");G.stats.wis++} if(c==="medicine"){addLifeSkill("藥理入門");G.stats.wis++} if(c==="trade"){addLifeSkill("商道入門");G.stats.cha++} if(c==="hunt"){addLifeSkill("野外生存");G.stats.spd++}
+ if(c==="family")addTrait("重情"); if(c==="friend")addTrait("重情"); if(c==="village"){addTrait("仁善");G.rep+=2} if(c==="goods")addTrait("務實"); if(c==="flee")addTrait("自保");
+ if(c==="save"){G.flags.cultivatorFavor=true;addLog("你救下修士，他留下日後相見的承諾。","rare")}
+ if(c==="loot"){G.spiritStones+=1;addLog("你偷走一枚下品靈石。","bad")}
+ if(c==="help")addLog("你帶人回來時，修士已經離開。")
+ if(c==="kill"){if(G.stats.str+G.stats.spd>=13&&chance(.35)){G.spiritStones+=15;G.flags.dark=true;addLog("你殺死重傷修士，奪走他的儲物袋。","bad")}else return die("重傷修士最後的一道劍光結束了你的人生。")}
+ if(c==="leave")addLog("你沒有介入。")
+ let next={5:8,8:11,11:13,13:15,15:16}[G.ageYears];G.year+=next-G.ageYears;G.ageYears=next;G.phase=next===16?"test":"age"+next;render()
+}
+function testUI(){setScreen(`<div class="title">16歲 · 測靈大典</div><p>測靈石亮起：<b class="gold">${G.roots.join("、")}</b></p><h2>${rootType()}</h2><button class="primary" onclick="offers()">查看仙途</button>`)}
+function offers(){G.offers=[];let r=G.roots,s=G.stats;if(r.includes("金")&&(s.spd>=5||s.wis>=5))G.offers.push(["太虛劍宗","劍嶺鎮"]);if((r.includes("木")||r.includes("水")||r.includes("火"))&&s.wis>=5)G.offers.push(["藥王谷","青雲城"]);if((r.includes("火")||r.includes("土")||r.includes("金"))&&(s.qi>=5||s.wis>=6))G.offers.push(["神策府","天機城"]);if((r.includes("土")||r.includes("金"))&&(s.hp>=5||s.str>=5))G.offers.push(["梵天禪院","鳳沙城"]);G.offers.push(["散修","天元城"]);G.phase="route";render()}
+function routeUI(){setScreen(`<div class="title">踏入仙途</div><div class="subtitle">宗門只是起點，天下才是舞台。</div>${G.offers.map((o,i)=>`<div class="choice"><h4>${o[0]}</h4><p>起始地：${o[1]}</p><button onclick="route(${i})">選擇</button></div>`).join("")}`)}
+function route(i){let o=G.offers[i];G.sect=o[0]==="散修"?null:o[0];G.place=o[1];G.realm="煉氣一層";G.cult=5;G.spiritStones+=G.sect?30:45;G.skillBooks.push(pick(["火球術","水箭術","震山拳"]));discover(G.place);for(const x of Object.keys(ROUTES[G.place]||{}))discover(x);G.phase="world";addLog(`你以${o[0]}身分踏入修仙界。真正的遊歷從此開始。`,"good");render()}
+
+/* Main world UI */
+function worldUI(tab="travel"){G.flags.lastTab=tab;let p=WORLDS[G.place]||{};setScreen(`
+<div class="title">${G.place}</div><div class="subtitle">${p.region||""} · ${p.type||""} · 危險度 ${p.danger??"?"}</div>
+<div class="tabs">
+<button class="${tab==="travel"?"active":""}" onclick="worldUI('travel')">遊歷</button>
+<button class="${tab==="quest"?"active":""}" onclick="worldUI('quest')">任務</button>
+<button class="${tab==="explore"?"active":""}" onclick="worldUI('explore')">探索</button>
+<button class="${tab==="people"?"active":""}" onclick="worldUI('people')">夥伴／伴侶</button>
+<button class="${tab==="skill"?"active":""}" onclick="worldUI('skill')">技能</button>
+<button class="${tab==="city"?"active":""}" onclick="worldUI('city')">當地行動</button>
+<button class="${tab==="cult"?"active":""}" onclick="worldUI('cult')">修煉</button>
+<button class="${tab==="bag"?"active":""}" onclick="worldUI('bag')">背包</button>
+</div><div id="tabbody"></div>`);
+let b=document.getElementById("tabbody");
+if(tab==="travel")travelTab(b);
+if(tab==="quest")questTab(b);
+if(tab==="explore")exploreTab(b);
+if(tab==="people")peopleTab(b);
+if(tab==="skill")skillTab(b);
+if(tab==="city")cityTab(b);
+if(tab==="cult")cultTab(b);
+if(tab==="bag")bagTab(b);
+}
+function travelTab(b){
+ let direct=ROUTES[G.place]||{};
+ let options=Object.entries(direct).filter(([x])=>G.discovered.includes(x));
+ let hubs=["天元城","青雲城","天機城","劍嶺鎮","鳳沙城","望月城"].filter(x=>x!==G.place&&G.discovered.includes(x)&&!direct[x]);
+ b.innerHTML=`<div class="notice">你可以沿附近道路移動，也可安排長途遠行。旅途中可能連續遭遇事件。</div>
+<h3>附近道路</h3>${options.map(([to,d])=>travelCard(to,d)).join("")||"<p class='muted'>沒有已知道路。</p>"}
+<h3>長途遠行</h3>${hubs.map(to=>travelCard(to,longTripDays(to),true)).join("")||"<p class='muted'>尚未掌握其他大城方向。</p>"}`;
+}
+function travelCard(to,d,long=false){let days=long?d:travelDays(d);return `<div class="choice"><h4>${to}</h4><p>${WORLDS[to].region} · ${WORLDS[to].type}　預估 ${days} 日${long?"（長途）":""}</p><button onclick="${long?`longTravel('${to}',${days})`:`travel('${to}',${d})`}">出發</button></div>`}
+function longTripDays(to){let reg=WORLDS[to]?.region||"";return 12+rand(7)+(reg===WORLDS[G.place]?.region?0:6)}
+function travelDays(base){return Math.max(1,Math.round(base*(1.25-G.stats.spd*.035)))}
+function travel(to,base){doTravel(to,travelDays(base))}
+function longTravel(to,days){doTravel(to,days)}
+function doTravel(to,days){
+ let from=G.place,segments=Math.max(1,Math.floor(days/5));advanceDays(days);
+ for(let i=0;i<segments;i++) if(chance(.38)) travelEncounter(from,to);
+ G.place=to;discover(to);for(const x of Object.keys(ROUTES[to]||{}))if(chance(.75))discover(x);
+ addLog(`你從${from}抵達${to}，共行${days}日。`,"info");render()
+}
+function travelEncounter(from,to){
+ let r=Math.random();
+ if(r<.22){let d=Math.max(1,Math.round(((WORLDS[from]?.danger||0)+(WORLDS[to]?.danger||0))/2));let foe=randomEnemy(d);startCombat(foe,"travel");return}
+ if(r<.42){let who=pick(NPC_TEMPLATES);addLog(`旅途中遇見${who.name}（${who.style}），短暫同行後彼此留下印象。`,"info");if(chance(.32))recruitNPC(who)}
+ else if(r<.57){let q=createClueQuest(from,to);addQuest(q);addLog(`你在途中得到一條線索，已加入任務「${q.title}」。`,"rare")}
+ else if(r<.68){let s=rand(6)+2;G.spiritStones+=s;addLog(`你幫助一支商隊處理麻煩，得到${s}枚下品靈石。`,"good")}
+ else addLog("這一段旅途平靜無事，只有山川與風聲陪伴你。")
+}
+
+/* Quest system */
+function addQuest(q){if(!G.quests.some(x=>x.id===q.id))G.quests.push(q)}
+function createClueQuest(a,b){
+ let pool=[
+  {title:"石壁後的回音",type:"ruin",place:b,desc:"戰鬥痕跡指向一處被人刻意遮掩的石壁。"},
+  {title:"失蹤採藥人的腳印",type:"beast",place:b,desc:"腳印一路延伸進危險山林，途中混著獸爪痕跡。"},
+  {title:"黑袍人的行蹤",type:"demonic",place:b,desc:"有人看見黑袍修士拖著染血布袋往荒野深處走。"},
+  {title:"殘缺藏寶圖",type:"treasure",place:b,desc:"一張殘圖標示著附近某處古老地窟。"}
+ ]; let x=structuredClone(pick(pool));x.id="q"+Date.now()+rand(99999);x.status="active";x.source="探索線索";return x
+}
+function questTab(b){
+ let active=G.quests.filter(q=>q.status==="active"),done=G.quests.filter(q=>q.status==="done");
+ b.innerHTML=`<div class="notice">探索得到的「線索」不再放進背包，而是自動形成可追查的任務。</div>
+<h3>進行中</h3>${active.map(q=>`<div class="choice"><h4>${q.title}</h4><p>${q.desc}</p><p>目標地：${q.place}　來源：${q.source}</p><button ${G.place===q.place?"":"disabled"} onclick="resolveQuest('${q.id}')">${G.place===q.place?"追查線索":"需前往"+q.place}</button></div>`).join("")||"<p class='muted'>目前沒有進行中的任務。</p>"}
+<h3>已完成</h3>${done.slice(-8).reverse().map(q=>`<div class="box"><h4>${q.title}</h4><p>${q.result||"已完成"}</p></div>`).join("")||"<p class='muted'>尚無。</p>"}`;
+}
+function resolveQuest(id){
+ let q=G.quests.find(x=>x.id===id);if(!q)return;advanceDays(rand(4)+2);
+ let d=WORLDS[G.place]?.danger||1;
+ if(q.type==="beast"){G.flags.questCombat=id;startCombat(randomEnemy(Math.max(1,d)),"quest");return}
+ if(q.type==="demonic"){G.flags.questCombat=id;startCombat({name:"黑袍魔修",level:d+2,maxHp:52+d*12,atk:9+d*4,spd:6+d*2,reward:12+d*7,type:"魔修"},"quest");return}
+ if(q.type==="ruin"&&chance(.55)){G.flags.questCombat=id;startCombat(randomEnemy(Math.max(1,d+1)),"quest");return}
+ finishQuest(q)
+}
+function finishQuest(q){
+ q.status="done";let r=Math.random();let result="";
+ if(r<.24){let t=randomTreasure();G.treasures.push(t);result=`得到寶物「${t.name}」（${t.buff}）。`;addLog(`完成任務「${q.title}」，${result}`,"rare")}
+ else if(r<.45){let w=randomWeapon();G.inventory.push(w);result=`得到武器「${w.name}」，攻擊+${w.atk}。`;addLog(`完成任務「${q.title}」，${result}`,"rare")}
+ else if(r<.62){let book=pick(Object.keys(SKILLS).filter(x=>!G.learnedSkills.includes(x)));if(book){G.skillBooks.push(book);result=`得到技能書《${book}》。`;addLog(`完成任務「${q.title}」，${result}`,"rare")}else{G.spiritStones+=20;result="得到20枚下品靈石。"}}
+ else if(r<.79){let title=randomTitle();if(!G.titles.some(t=>t.name===title.name))G.titles.push(title);result=`獲得稱號【${title.name}】：${title.buff}`;addLog(result,"rare")}
+ else if(r<.92){let who=structuredClone(pick(NPC_TEMPLATES));recruitNPC(who,true);result=`結識並招募${who.name}成為旅行夥伴。`}
+ else {G.spiritStones+=rand(21)+15;result="得到一批靈石與材料。";addLog(`完成任務「${q.title}」，${result}`,"good")}
+ q.result=result;render()
+}
+function randomTreasure(){return pick([{name:"凝神玉佩",buff:"悟性相關判定略微提高",stat:"wis",v:1},{name:"青木護心鏡",buff:"最大生命+10",hp:10},{name:"踏雲靴",buff:"逃跑成功率+8%",escape:.08},{name:"聚靈珠",buff:"修煉效率+8%",cult:.08}])}
+function randomWeapon(){return pick([{name:"玄鐵長劍",type:"weapon",atk:7},{name:"赤紋刀",type:"weapon",atk:8},{name:"青鋒靈劍",type:"weapon",atk:10},{name:"破邪槍",type:"weapon",atk:9}])}
+function randomTitle(){return pick([{name:"荒野行者",buff:"旅行逃跑率+5%",escape:.05},{name:"獵妖新秀",buff:"對魔獸傷害+5%",beast:.05},{name:"破邪之人",buff:"對魔修傷害+5%",demon:.05},{name:"尋寶客",buff:"任務獎勵品質略微提升",loot:.05}])}
+
+/* Explore */
+function exploreTab(b){let ex=G.explored[G.place]||0;b.innerHTML=`<h3>探索度：${ex}%</h3><div class="progress"><span style="width:${ex}%"></span></div><p class="muted">探索可能形成任務、遭遇敵人、認識NPC或發現新道路。</p><button class="primary" onclick="explore()">探索附近</button>`}
+function explore(){
+ let p=WORLDS[G.place],d=p?.danger||0,days=rand(5)+2;advanceDays(days);G.explored[G.place]=clamp((G.explored[G.place]||0)+rand(9)+6+Math.floor(G.stats.wis/3),0,100);
+ let r=Math.random();
+ if(r<.28){let q=createClueQuest(G.place,G.place);addQuest(q);addLog(`探索時發現新線索，任務「${q.title}」已加入任務列表。`,"rare")}
+ else if(r<.48&&d>0){startCombat(randomEnemy(d),"explore");return}
+ else if(r<.68){let who=structuredClone(pick(NPC_TEMPLATES));addLog(`你在${G.place}遇見${who.name}（${who.style}）。`,"info");if(chance(.4))recruitNPC(who)}
+ else if(r<.84){let s=rand(10)+4;G.spiritStones+=s;addLog(`你採集到一批材料，出售後得到${s}枚下品靈石。`,"good")}
+ else {let roads=Object.keys(ROUTES[G.place]||{}).filter(x=>!G.discovered.includes(x));if(roads.length){let n=pick(roads);discover(n);addLog(`你找到一條通往「${n}」的新路。`,"rare")}else addLog("你繞行數日，沒有特別發現。")}
+ render()
+}
+
+/* Companion / partner */
+function recruitNPC(t,force=false){
+ if(G.companions.some(n=>n.name===t.name))return;
+ if(force||chance(.65)){G.companions.push({name:t.name,gender:t.gender,romance:t.romance,style:t.style,home:t.home,personality:t.personality,aff:35+rand(16),trust:30+rand(16),status:"夥伴",storyTriggered:false});addLog(`${t.name}決定暫時與你同行。`,"good")}
+}
+function peopleTab(b){
+ let list=G.companions;
+ b.innerHTML=`<div class="notice">夥伴會有自己的好感與故事。成為「摯友」後，作為上場夥伴時提供5%戰力加成。</div>
+${G.partner?`<div class="choice"><h4>道侶：${G.partner}</h4><p>你們已確認彼此的感情。</p></div>`:""}
+${list.map((n,i)=>`<div class="choice"><h4>${n.name} · ${n.status}${G.activeCompanion===n.name?"（上場）":""}</h4><p>${n.style}｜${n.personality}｜好感 ${n.aff}｜信任 ${n.trust}</p><div class="row"><button onclick="chatNPC(${i})">閒聊</button><button onclick="giftNPC(${i})">贈與物品</button><button onclick="setActive(${i})">設為上場夥伴</button>${n.romance&&n.aff>=85&&n.trust>=75&&!G.partner?`<button onclick="confess(${i})">表明心意</button>`:""}</div></div>`).join("")||"<p class='muted'>尚無旅行夥伴。透過遊歷、探索與任務可能結識他們。</p>"}`;
+}
+function chatNPC(i){
+ let n=G.companions[i];advanceDays(1);let gain=rand(4)+1;n.aff=clamp(n.aff+gain,0,100);n.trust=clamp(n.trust+rand(3),0,100);
+ addLog(`你與${n.name}閒聊了一陣，好感+${gain}。`,"info");
+ if(!n.storyTriggered&&n.aff>=50&&chance(.45)){
+  n.storyTriggered=true;let q={id:"npc"+Date.now()+rand(9999),title:`${n.name}的故鄉`,type:"npcstory",place:n.home,desc:`閒聊時，${n.name}提起故鄉${n.home}的一段往事，希望你有朝一日能陪其回去看看。`,status:"active",source:`與${n.name}閒聊`,npc:n.name};addQuest(q);addLog(`${n.name}向你透露了家鄉往事，特殊任務「${q.title}」開啟。`,"rare")
+ }
+ checkFriend(n);render()
+}
+function giftNPC(i){
+ let n=G.companions[i];let affordable=GIFTS.filter(g=>g.price<=G.spiritStones);if(!affordable.length){alert("你沒有足夠靈石購買合適的贈禮。");return}
+ let g=pick(affordable);G.spiritStones-=g.price;let bonus=g.aff+(G.stats.cha>=7?2:0);n.aff=clamp(n.aff+bonus,0,100);addLog(`你送給${n.name}「${g.name}」，好感+${bonus}。`,"good");checkFriend(n);render()
+}
+function checkFriend(n){if(n.aff>=80&&n.trust>=70&&n.status!=="摯友"){n.status="摯友";addLog(`${n.name}已將你視為摯友。其上場時，你的總戰力提高5%。`,"rare")}}
+function setActive(i){G.activeCompanion=G.companions[i].name;addLog(`${G.activeCompanion}成為你的上場夥伴。`,"info");render()}
+function confess(i){let n=G.companions[i];if(!n.romance)return;if(chance(.55+(n.aff+n.trust-160)/100)){G.partner=n.name;n.status="道侶";G.activeCompanion=n.name;addLog(`${n.name}接受了你的心意，你們結為道侶。`,"rare")}else{n.aff-=8;addLog(`${n.name}沒有接受你的心意。你們的關係變得有些微妙。`,"bad")}render()}
+
+/* NPC story quest special completion */
+function finishNpcStory(q){
+ let n=G.companions.find(x=>x.name===q.npc);if(n){n.aff=clamp(n.aff+25,0,100);n.trust=clamp(n.trust+20,0,100);q.status="done";q.result=`陪${n.name}回到故鄉並解決往事。好感與信任大幅提升。`;addLog(`你協助${n.name}完成故鄉之事。你們的關係更深了。`,"rare");checkFriend(n)}
+}
+
+/* Skills / inventory */
+function skillTab(b){
+ b.innerHTML=`<h3>已習得技能</h3>${G.learnedSkills.map(s=>`<div class="box"><h4>${s}</h4><p>${SKILLS[s].desc}　耗氣 ${SKILLS[s].qi}</p></div>`).join("")||"<p class='muted'>尚未學會術法。</p>"}
+<h3>技能書</h3>${G.skillBooks.map((s,i)=>`<div class="choice"><h4>《${s}》</h4><p>${SKILLS[s]?.desc||""}</p><button onclick="learnSkill(${i})">研習</button></div>`).join("")||"<p class='muted'>沒有未研習的技能書。</p>"}`;
+}
+function learnSkill(i){let s=G.skillBooks[i];if(!s)return;if(!G.learnedSkills.includes(s))G.learnedSkills.push(s);G.skillBooks.splice(i,1);advanceDays(2);addLog(`你研習技能書，學會「${s}」。`,"good");render()}
+function bagTab(b){b.innerHTML=`<h3>裝備／物品</h3>${G.inventory.map((x,i)=>`<div class="choice"><h4>${x.name}</h4><p>${x.type==="weapon"?"攻擊+"+x.atk:"一般物品"}</p>${x.type==="weapon"?`<button onclick="equipWeapon(${i})">裝備</button>`:""}</div>`).join("")}
+<h3>寶物</h3>${G.treasures.map(x=>`<div class="box"><h4>${x.name}</h4><p>${x.buff}</p></div>`).join("")||"<p class='muted'>尚無寶物。</p>"}
+<p>目前武器：${G.equippedWeapon?.name||"徒手"}</p>`}
+function equipWeapon(i){let x=G.inventory[i];if(x?.type==="weapon"){G.equippedWeapon=x;addLog(`你裝備了「${x.name}」。`,"info");render()}}
+
+/* City / cultivate */
+function cityTab(b){b.innerHTML=`<div class="row"><button onclick="localAction('market')">逛坊市</button><button onclick="localAction('inn')">酒樓打聽消息</button><button onclick="localAction('notice')">查看懸賞／委託</button>${G.sect&&G.place===sectPlace()?'<button onclick="localAction(\'sect\')">宗門事務</button>':""}</div>`}
+function localAction(x){
+ if(x==="market"){advanceDays(1);if(G.spiritStones>=6){G.spiritStones-=6;G.inventory.push({name:"低階療傷丹",type:"consumable"});addLog("你在坊市買了一顆低階療傷丹。")}else addLog("你逛了坊市，但沒有足夠靈石。")}
+ if(x==="inn"){advanceDays(1);let roads=Object.keys(ROUTES[G.place]||{});if(roads.length){let n=pick(roads);discover(n);addLog(`酒客談起前往${n}的道路與近況。`,"info")}else addLog("酒樓裡多半只是閒聊。")}
+ if(x==="notice"){advanceDays(1);let q=createClueQuest(G.place,G.place);q.source="城鎮委託";addQuest(q);addLog(`你接下委託「${q.title}」。`,"info")}
+ if(x==="sect"){advanceDays(2);G.spiritStones+=6;addLog("你完成宗門差事，得到6枚下品靈石。","good")}
+ render()
+}
+function sectPlace(){return {"太虛劍宗":"太虛劍宗","藥王谷":"藥王谷","神策府":"神策府","梵天禪院":"梵天禪院"}[G.sect]}
+function cultTab(b){b.innerHTML=`<h3>${G.realm}</h3><p>修為 ${G.cult}/100</p><div class="progress"><span style="width:${Math.min(100,G.cult)}%"></span></div><p>閉關只是人生中的一種選擇。</p><div class="row"><button onclick="cultivate(10)">打坐十日</button><button onclick="cultivate(30)">閉關一月</button><button onclick="cultivate(90)">閉關三月</button></div>`}
+function cultivate(days){advanceDays(days);let mult=G.roots.length===1?1.35:G.roots.length===2?1.15:G.roots.length===3?1:.82;let tbonus=1+G.treasures.reduce((a,t)=>a+(t.cult||0),0);let gain=Math.max(1,Math.round((G.stats.qi+G.stats.wis/2)*mult*tbonus*days/28));G.cult+=gain;addLog(`修煉${days}日，修為增加${gain}。`);while(G.cult>=100&&G.realm!=="煉氣大圓滿"){G.cult-=100;let a=["一","二","三","四","五","六","七","八","九"],m=G.realm.match(/煉氣(.)層/);if(m){let i=a.indexOf(m[1]);if(i<8){G.realm=`煉氣${a[i+1]}層`;addLog(`突破至${G.realm}！`,"good")}else{G.realm="煉氣大圓滿";G.cult=100}}}render()}
+
+/* Combat */
+function playerMaxHP(){let bonus=G.treasures.reduce((a,t)=>a+(t.hp||0),0);return 55+G.stats.hp*8+bonus}
+function playerMaxQI(){return 30+G.stats.qi*10}
+function combatPowerBuff(enemy){
+ let b=1;
+ let n=G.companions.find(x=>x.name===G.activeCompanion);if(n&&n.status==="摯友")b+=.05;
+ if(n&&n.status==="道侶")b+=.07;
+ for(const t of G.titles){if(enemy.type==="魔獸")b+=t.beast||0;if(enemy.type==="魔修")b+=t.demon||0}
+ return b
+}
+function randomEnemy(d){
+ let names=d>=4?["血眼魔狼","腐骨巨蟒","幽冥鬼猿"]:d>=2?["鐵背妖狼","赤尾妖狐","毒牙巨蜥"]:["野化靈狼","山魈","低階妖蛇"];
+ return {name:pick(names),level:d,maxHp:35+d*15,atk:7+d*4,spd:5+d*2,reward:5+d*6,type:"魔獸"}
+}
+function startCombat(enemy,source){if(G.combat)return;G.combat={enemy,source,pHP:playerMaxHP(),pQI:playerMaxQI(),eHP:enemy.maxHp,guardEscape:0,log:[`遭遇${enemy.name}！`]};render()}
+function combatUI(){
+ let c=G.combat,e=c.enemy;
+ setScreen(`<div class="title">戰鬥 · ${e.name}</div><div class="combat-grid">
+ <div class="box"><h4>${G.name}</h4><p>生命 ${Math.max(0,c.pHP)}/${playerMaxHP()}</p><div class="progress hpbar"><span style="width:${clamp(c.pHP/playerMaxHP()*100,0,100)}%"></span></div><p>靈氣 ${Math.max(0,c.pQI)}/${playerMaxQI()}</p><div class="progress qibar"><span style="width:${clamp(c.pQI/playerMaxQI()*100,0,100)}%"></span></div></div>
+ <div class="box"><h4>${e.name} · ${e.type}</h4><p>生命 ${Math.max(0,c.eHP)}/${e.maxHp}</p><div class="progress hpbar"><span style="width:${clamp(c.eHP/e.maxHp*100,0,100)}%"></span></div><p>威脅等級：${e.level}</p></div></div>
+ <h3>行動</h3><div class="row"><button class="primary" onclick="combatAction('attack')">一般攻擊</button>${G.learnedSkills.map(s=>`<button ${c.pQI<SKILLS[s].qi?"disabled":""} onclick="combatSkill('${s}')">${s}（${SKILLS[s].qi}氣）</button>`).join("")}<button onclick="combatAction('escape')">逃跑</button></div>
+ <div class="box" style="margin-top:12px"><h4>戰況</h4>${c.log.slice(-6).map(x=>`<p>${x}</p>`).join("")}</div>`)
+}
+function combatAction(a){
+ let c=G.combat,e=c.enemy;if(a==="attack"){let dmg=Math.round((5+G.stats.str*2+(G.equippedWeapon?.atk||0))*combatPowerBuff(e)*(0.85+Math.random()*.3));c.eHP-=dmg;c.log.push(`你一般攻擊造成 ${dmg} 傷害。`);if(c.eHP<=0)return winCombat()}
+ if(a==="escape"){let base=.62+(G.stats.spd-e.spd)*.045+c.guardEscape+G.treasures.reduce((a,t)=>a+(t.escape||0),0)+G.titles.reduce((a,t)=>a+(t.escape||0),0);if(chance(clamp(base,.08,.92))){addLog(`你成功從${e.name}手中逃走。`,"info");G.combat=null;render();return}else c.log.push("逃跑失敗！")}
+ enemyTurn()
+}
+function combatSkill(s){
+ let c=G.combat,e=c.enemy,sk=SKILLS[s];if(c.pQI<sk.qi)return;c.pQI-=sk.qi;
+ if(sk.utility==="heal"){let heal=-sk.power+Math.floor(G.stats.qi*.6);c.pHP=clamp(c.pHP+heal,0,playerMaxHP());c.log.push(`你施展${s}，恢復 ${heal} 生命。`)}
+ else if(sk.utility==="escape"){c.guardEscape+=.22;c.log.push(`你施展${s}，身法變得飄忽，逃跑成功率提高。`)}
+ else {let dmg=Math.round((sk.power+G.stats.qi*1.4+G.stats.wis*.5)*combatPowerBuff(e)*(0.88+Math.random()*.25));c.eHP-=dmg;c.log.push(`你施展${s}，造成 ${dmg} 傷害。`);if(c.eHP<=0)return winCombat()}
+ enemyTurn()
+}
+function enemyTurn(){
+ let c=G.combat,e=c.enemy;let dodge=clamp(.05+(G.stats.spd-e.spd)*.025,0,.35);
+ if(chance(dodge)){c.log.push(`你閃過${e.name}的攻擊。`)}
+ else {let dmg=Math.max(1,Math.round(e.atk*(.85+Math.random()*.3)-G.stats.hp*.5));c.pHP-=dmg;c.log.push(`${e.name}反擊，造成 ${dmg} 傷害。`)}
+ if(c.pHP<=0){let eName=e.name;G.combat=null;die(`你在與${eName}的戰鬥中身亡。`);return}render()
+}
+function winCombat(){
+ let c=G.combat,e=c.enemy;let reward=e.reward+rand(6);G.spiritStones+=reward;addLog(`你擊敗${e.name}，得到價值${reward}靈石的戰利品。`,"good");
+ let source=c.source;G.combat=null;
+ if(source==="quest"&&G.flags.questCombat){let q=G.quests.find(x=>x.id===G.flags.questCombat);delete G.flags.questCombat;if(q){if(q.type==="npcstory")finishNpcStory(q);else finishQuest(q);return}}
+ if(chance(.14)){let title=e.type==="魔修"?{name:"初斬邪修",buff:"對魔修傷害+5%",demon:.05}:{name:"初獵妖獸",buff:"對魔獸傷害+5%",beast:.05};if(!G.titles.some(t=>t.name===title.name)){G.titles.push(title);addLog(`你獲得稱號【${title.name}】：${title.buff}`,"rare")}}
+ render()
+}
+
+/* Override npcstory quest handling */
+const _resolveQuest = resolveQuest;
+resolveQuest = function(id){
+ let q=G.quests.find(x=>x.id===id);if(!q)return;
+ if(q.type==="npcstory"){
+   advanceDays(rand(3)+2);
+   if(chance(.6)){G.flags.questCombat=id;startCombat(randomEnemy(Math.max(1,WORLDS[G.place]?.danger||1)),"quest");return}
+   finishNpcStory(q);render();return
+ }
+ _resolveQuest(id)
+}
+
+/* Save / death */
+function die(t){G.alive=false;addLog(t,"bad");render()}
+function death(){setScreen(`<div class="title">人物生平</div><p>${G.name}，卒於${fmtDate()}，享年${fmtAge()}。</p><button class="primary" onclick="newGame()">開始下一世</button>`)}
+function saveGame(){localStorage.setItem("dahuang04",JSON.stringify(G));addLog("遊戲已儲存。","info");render()}
+function loadGame(){let s=localStorage.getItem("dahuang04");if(!s)return alert("沒有 Alpha 0.4 存檔");G=JSON.parse(s);render()}
+function newGame(){if(confirm("開始新局？")){G=fresh();render()}}
+G=fresh();render();
+</script>
+</body></html>

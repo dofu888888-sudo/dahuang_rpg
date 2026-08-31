@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>大荒域：凡塵問仙 Alpha 0.3</title>
+<style>
+:root{--bg:#0c1117;--panel:#151c24;--panel2:#10161e;--line:#2b3643;--text:#edf1f5;--muted:#9ba8b6;--gold:#d8b56a;--good:#77bf8b;--bad:#dc7b7b;--info:#7eb1df;--rare:#ba9be9}
+*{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at top,#182330,#0c1117 45%);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",sans-serif}
+button,input{font:inherit} button{background:#222d39;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 12px;cursor:pointer}button.primary{background:#6c5425;border-color:#9b7937}button.danger{background:#52282a}button:disabled{opacity:.45}
+.app{max-width:960px;margin:auto;padding:12px}.header{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px}.brand h1{font-size:21px;color:var(--gold);margin:0}.muted{color:var(--muted)}
+.card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:0 10px 30px #0003}.screen{min-height:420px}.title{font-size:24px;color:var(--gold);margin-bottom:5px}.subtitle{color:var(--muted);margin-bottom:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.kv{display:grid;grid-template-columns:90px 1fr;gap:5px 10px;font-size:14px}.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.stat,.choice{border:1px solid var(--line);border-radius:11px;background:#111923;padding:10px}.stat b{float:right}.choice{margin:9px 0}.choice h4{margin:0 0 5px}.choice p{margin:4px 0;color:#c0cad4;line-height:1.55}.pill{display:inline-block;padding:3px 7px;border:1px solid var(--line);border-radius:999px;margin:2px;font-size:12px}.notice{padding:10px;border-left:3px solid var(--gold);background:#201b12;border-radius:8px;color:#e4d0a3}
+.log{max-height:360px;overflow:auto;font-size:13px;line-height:1.55}.entry{padding:6px 0;border-bottom:1px dashed #293440}.good{color:var(--good)}.bad{color:var(--bad)}.info{color:var(--info)}.rare{color:var(--rare)}
+.progress{height:8px;background:#242e39;border-radius:99px;overflow:hidden}.progress span{height:100%;display:block;background:linear-gradient(90deg,#846832,#d3af59)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}.tabs button.active{border-color:var(--gold);color:var(--gold)}
+.map{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.place{border:1px solid var(--line);border-radius:12px;padding:11px;background:#111923}.place.current{border-color:var(--gold)}
+@media(max-width:650px){.stat-grid,.map{grid-template-columns:1fr 1fr}.header{align-items:flex-start}.kv{grid-template-columns:75px 1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+ <div class="header">
+  <div class="brand"><h1>大荒域：凡塵問仙</h1><span class="muted">Alpha 0.3 · 遊歷天下</span></div>
+  <div class="row"><button onclick="saveGame()">儲存</button><button onclick="loadGame()">讀取</button><button class="danger" onclick="newGame()">新局</button></div>
+ </div>
+ <main class="card">
+  <div id="summary"></div>
+  <hr style="border-color:var(--line);border-width:1px 0 0;margin:14px 0">
+  <div id="screen" class="screen"></div>
+  <hr style="border-color:var(--line);border-width:1px 0 0;margin:18px 0 12px">
+  <h3>人生經歷</h3><div id="log" class="log"></div>
+ </main>
+</div>
+<script>
+const STAT_NAMES={hp:"體力",str:"力量",spd:"速度",qi:"氣根",wis:"悟性",cha:"魅力"};
+const ROOTS=["金","木","水","火","土"], ROOT_COST={1:10,2:6,3:3,4:1,5:0}, STAT_COST={4:1,5:1,6:1,7:2,8:2,9:3,10:4};
+const PLACES={
+ "天元城":{region:"中州",type:"巨城",danger:0,links:{"安平鎮":4,"望月城":9,"青雲城":8,"天機城":7,"天元河":2}},
+ "安平鎮":{region:"中州",type:"城鎮",danger:0,links:{"天元城":4,"天元河":3}},
+ "望月城":{region:"中州",type:"港城",danger:1,links:{"天元城":9,"東海":3}},
+ "青雲城":{region:"中州",type:"邊城",danger:1,links:{"天元城":8,"百草山脈":3,"藥王谷":5}},
+ "天機城":{region:"中州",type:"修士城",danger:1,links:{"天元城":7,"神策府":2,"鎮妖關":8}},
+ "天元河":{region:"中州",type:"野外",danger:2,links:{"天元城":2,"安平鎮":3}},
+ "百草山脈":{region:"南疆",type:"野外",danger:2,links:{"青雲城":3,"藥王谷":4,"萬毒沼澤":7}},
+ "藥王谷":{region:"南疆",type:"宗門",danger:0,links:{"青雲城":5,"百草山脈":4}},
+ "萬毒沼澤":{region:"南疆",type:"野外",danger:4,links:{"百草山脈":7}},
+ "神策府":{region:"中州",type:"宗門",danger:0,links:{"天機城":2}},
+ "鎮妖關":{region:"中北",type:"要塞",danger:3,links:{"天機城":8}},
+ "劍嶺鎮":{region:"北境",type:"城鎮",danger:1,links:{"太虛劍宗":2,"寒骨原":6}},
+ "太虛劍宗":{region:"北境",type:"宗門",danger:0,links:{"劍嶺鎮":2}},
+ "寒骨原":{region:"北境",type:"野外",danger:3,links:{"劍嶺鎮":6}},
+ "鳳沙城":{region:"西境",type:"大城",danger:1,links:{"梵天禪院":4,"大荒沙海":3}},
+ "梵天禪院":{region:"西境",type:"宗門",danger:0,links:{"鳳沙城":4}},
+ "大荒沙海":{region:"西境",type:"野外",danger:3,links:{"鳳沙城":3}},
+ "東海":{region:"東海",type:"海域",danger:3,links:{"望月城":3,"雲海群島":8}},
+ "雲海群島":{region:"東海",type:"群島",danger:2,links:{"東海":8}}
+};
+let G,currentEvent=null;
+function fresh(){return {version:"0.3",phase:"create",name:"無名",year:742,month:4,day:1,ageYears:0,ageMonths:0,bg:null,bgCost:0,stats:{hp:3,str:3,spd:3,qi:3,wis:3,cha:3},roots:[],traits:[],skills:[],flags:{},relations:{},events:[],realm:"凡人",cult:0,place:null,sect:null,spiritStones:0,inventory:["布衣"],discovered:["天元城","安平鎮","望月城","青雲城","天機城"],explore:{},rep:0,alive:true}}
+function rand(n){return Math.floor(Math.random()*n)} function pick(a){return a[rand(a.length)]} function chance(p){return Math.random()<p}
+function addLog(t,c=""){G.events.unshift({t,c,y:G.year,m:G.month,d:G.day,ay:G.ageYears,am:G.ageMonths})}
+function advanceDays(n){for(let i=0;i<n;i++){G.day++;if(G.day>30){G.day=1;G.month++;G.ageMonths++;if(G.ageMonths>=12){G.ageMonths=0;G.ageYears++}if(G.month>12){G.month=1;G.year++}}}}
+function fmtDate(){return `大曆${G.year}年${G.month}月${G.day}日`} function fmtAge(){return `${G.ageYears}歲${G.ageMonths?G.ageMonths+"個月":""}`}
+function addTrait(x){if(!G.traits.includes(x))G.traits.push(x)} function addSkill(x){if(!G.skills.includes(x))G.skills.push(x)}
+function relation(){if(!G.relations.friend)G.relations.friend={name:pick(["蘇璃","葉清竹","顧寒","沈棠","陳青","趙虎"]),aff:50,trust:50,alive:true};return G.relations.friend}
+function setScreen(x){document.getElementById("screen").innerHTML=x}
+function render(){summary();logs();if(!G.alive)return death();if(G.phase==="create")createUI();else if(G.phase.startsWith("age"))ageUI(+G.phase.slice(3));else if(G.phase==="test")testUI();else if(G.phase==="route")routeUI();else if(G.phase==="world")worldUI()}
+function summary(){document.getElementById("summary").innerHTML=`<div class="kv"><span class="muted">姓名</span><b>${G.name}</b><span class="muted">年齡</span><span>${fmtAge()}</span><span class="muted">年代</span><span>${fmtDate()}</span><span class="muted">境界</span><span>${G.realm}</span><span class="muted">所在地</span><span>${G.place||"未定"}</span><span class="muted">靈石</span><span>${G.spiritStones}</span></div><div class="stat-grid" style="margin-top:10px">${Object.entries(G.stats).map(([k,v])=>`<div class="stat">${STAT_NAMES[k]}<b>${v}</b></div>`).join("")}</div><div style="margin-top:8px">${G.traits.map(x=>`<span class="pill">${x}</span>`).join("")}</div>`}
+function logs(){document.getElementById("log").innerHTML=G.events.slice(0,60).map(e=>`<div class="entry ${e.c}"><span class="muted">大曆${e.y}年${e.m}月${e.d}日 · ${e.ay}歲${e.am?e.am+"個月":""}</span>　${e.t}</div>`).join("")||'<span class="muted">尚無紀錄。</span>'}
+function totalStat(){let t=0;for(const v of Object.values(G.stats))for(let x=4;x<=v;x++)t+=STAT_COST[x]||0;return t} function rootCost(){return G.roots.length?ROOT_COST[G.roots.length]:0} function remain(){return 20-G.bgCost-totalStat()-rootCost()}
+function rootType(){return ["","真靈根","雙靈根","三靈根","偽靈根","五行雜靈根"][G.roots.length]||"未選"}
+function createUI(){setScreen(`<div class="title">角色創建</div><div class="subtitle">命格剩餘：${remain()}</div><input id="nm" placeholder="角色姓名" style="padding:9px;background:#0e151d;color:white;border:1px solid var(--line);border-radius:9px"><h3>出生</h3><div class="row"><button onclick="bg('貧寒之家',0)">貧寒之家</button><button onclick="bg('富貴之家',4)">富貴之家（4）</button></div><h3>六維</h3>${Object.keys(G.stats).map(k=>`<div class="choice">${STAT_NAMES[k]}：<b>${G.stats[k]}</b> <button onclick="sd('${k}',-1)">−</button><button onclick="sd('${k}',1)">＋</button></div>`).join("")}<h3>靈根：${rootType()}</h3><div class="row">${ROOTS.map(r=>`<button onclick="rt('${r}')" style="${G.roots.includes(r)?"border-color:var(--gold)":""}">${r}</button>`).join("")}</div><p>靈根消耗：${rootCost()}　剩餘命格：${remain()}</p><button class="primary" ${G.bg&&G.roots.length&&remain()>=0?"":"disabled"} onclick="born()">開始人生</button>`)}
+function bg(x,c){G.bg=x;G.bgCost=c;render()} function sd(k,n){let old=G.stats[k];G.stats[k]=Math.max(3,Math.min(10,old+n));if(remain()<0)G.stats[k]=old;render()} function rt(r){G.roots.includes(r)?G.roots=G.roots.filter(x=>x!==r):G.roots.push(r);if(remain()<0)G.roots=G.roots.filter(x=>x!==r);render()}
+function born(){let n=document.getElementById("nm").value.trim();if(n)G.name=n;G.place="安平鎮";G.ageYears=5;G.year=747;G.phase="age5";relation();addLog(`出生於${G.bg}。`,"info");render()}
+const EVENTS={
+5:["林中獸影","你與童年好友在林間撞上一頭受傷妖獸。",[["擋在朋友前面","brave"],["一起逃跑","run"],["自己逃跑","solo"],["觀察妖獸","observe"]]],
+8:["村中武師","一名退伍武師願意教附近孩子一些本事。",[["學拳","fist"],["學身法","move"],["學弓","bow"],["不學","none"]]],
+11:["未來的路","家裡開始考慮你將來靠什麼生活。",[["習武","martial"],["讀書","study"],["學醫","medicine"],["經商","trade"],["狩獵","hunt"]]],
+13:["災難","洪水突然沖進附近村落，你只能先做一件事。",[["救家人","family"],["救朋友","friend"],["幫助村民","village"],["保住財物","goods"],["逃離","flee"]]],
+15:["受傷修士","荒野中，一名重傷修士倒在路旁，飛劍仍懸在身側。",[["救他","save"],["搜他的東西","loot"],["找人幫忙","help"],["殺人奪寶","kill"],["離開","leave"]]]
+};
+function ageUI(a){let e=EVENTS[a];setScreen(`<div class="title">${a}歲 · ${e[0]}</div><p style="font-size:18px;line-height:1.7">${e[1]}</p>${e[2].map((c,i)=>`<div class="choice"><h4>${i+1}. ${c[0]}</h4><button onclick="ageChoice('${c[1]}')">選擇</button></div>`).join("")}`)}
+function ageChoice(c){let f=relation();if(c==="brave"){addTrait("勇敢");f.trust+=20;G.stats.hp++;addLog(`你保護了${f.name}，自己留下傷痕。`,"good")}if(c==="run"){addTrait("謹慎");f.trust+=8;addLog(`你和${f.name}一起逃回村裡。`)}if(c==="solo"){f.trust-=25;addTrait("自保");addLog("你選擇獨自逃走。","bad")}if(c==="observe"){G.stats.wis++;addTrait("好奇");addLog("你看出妖獸受傷，找到安全退路。","good")}
+if(c==="fist"){addSkill("基礎拳腳");G.stats.str++}if(c==="move"){addSkill("基礎身法");G.stats.spd++}if(c==="bow"){addSkill("基礎弓術");G.stats.str++}
+if(c==="martial"){addSkill("凡俗武藝");G.stats.hp++}if(c==="study"){addSkill("識文斷字");G.stats.wis++}if(c==="medicine"){addSkill("藥理入門");G.stats.wis++}if(c==="trade"){addSkill("商道入門");G.stats.cha++}if(c==="hunt"){addSkill("野外生存");G.stats.spd++}
+if(c==="family")addTrait("重情");if(c==="friend"){addTrait("重情");f.trust+=12}if(c==="village"){addTrait("仁善");G.rep+=2}if(c==="goods")addTrait("務實");if(c==="flee")addTrait("自保");
+if(c==="save"){G.flags.cultivatorFavor=true;addLog("你救下修士，他留下日後相見的承諾。","rare")}if(c==="loot"){G.spiritStones+=1;addLog("你偷走一枚下品靈石。","bad")}if(c==="help")addLog("你帶人回來時，修士已經離開。");if(c==="kill"){if(G.stats.str+G.stats.spd>=13&&chance(.35)){G.spiritStones+=15;G.flags.dark=true;addLog("你殺死重傷修士，奪走他的儲物袋。","bad")}else return die("重傷修士最後的一道劍光結束了你的人生。")}if(c==="leave")addLog("你沒有介入。");
+let next={5:8,8:11,11:13,13:15,15:16}[G.ageYears];let years=next-G.ageYears;G.ageYears=next;G.year+=years;if(next===16)G.phase="test";else G.phase="age"+next;render()}
+function testUI(){setScreen(`<div class="title">16歲 · 測靈大典</div><p>測靈石亮起：<b style="color:var(--gold)">${G.roots.join("、")}</b></p><h2>${rootType()}</h2><p>${relation().name}的結果：${pick(["無靈根","水真靈根","火木雙靈根","三靈根","四靈根"])}</p><button class="primary" onclick="offers()">查看仙途</button>`)}
+function offers(){G.offers=[];let r=G.roots,s=G.stats;if(r.includes("金")&&(s.spd>=5||s.wis>=5))G.offers.push(["太虛劍宗","劍嶺鎮"]);if((r.includes("木")||r.includes("水")||r.includes("火"))&&s.wis>=5)G.offers.push(["藥王谷","青雲城"]);if((r.includes("火")||r.includes("土")||r.includes("金"))&&(s.qi>=5||s.wis>=6))G.offers.push(["神策府","天機城"]);if((r.includes("土")||r.includes("金"))&&(s.hp>=5||s.str>=5))G.offers.push(["梵天禪院","鳳沙城"]);G.offers.push(["散修","天元城"]);G.phase="route";render()}
+function routeUI(){setScreen(`<div class="title">踏入仙途</div><div class="subtitle">宗門只是起點。真正的大荒域在山門之外。</div>${G.offers.map((o,i)=>`<div class="choice"><h4>${o[0]}</h4><p>起始地：${o[1]}</p><button onclick="route(${i})">選擇</button></div>`).join("")}`)}
+function route(i){let o=G.offers[i];G.sect=o[0]==="散修"?null:o[0];G.place=o[1];G.realm="煉氣一層";G.cult=5;G.spiritStones+=G.sect?20:35;discover(G.place);Object.keys(PLACES[G.place]?.links||{}).forEach(discover);G.phase="world";addLog(`你以${o[0]}的身分踏入修仙界。真正的遊歷從此開始。`,"good");render()}
+function discover(p){if(PLACES[p]&&!G.discovered.includes(p))G.discovered.push(p)}
+function worldUI(tab="travel"){let p=PLACES[G.place]||{links:{},type:"未知"};setScreen(`<div class="title">${G.place}</div><div class="subtitle">${p.region||""} · ${p.type||""} · 危險度 ${p.danger??"?"}</div><div class="tabs"><button class="${tab==="travel"?"active":""}" onclick="worldUI('travel')">遊歷</button><button class="${tab==="explore"?"active":""}" onclick="worldUI('explore')">探索</button><button class="${tab==="city"?"active":""}" onclick="worldUI('city')">當地行動</button><button class="${tab==="cult"?"active":""}" onclick="worldUI('cult')">修煉</button><button class="${tab==="bag"?"active":""}" onclick="worldUI('bag')">背包</button></div><div id="tabbody"></div>`);let b=document.getElementById("tabbody");
+if(tab==="travel"){let links=Object.entries(p.links||{});b.innerHTML=`<div class="notice">旅行會實際消耗時間，途中可能遇到修士、妖獸、商隊、遺跡或完全平安無事。</div>${links.map(([to,d])=>`<div class="choice"><h4>${to}</h4><p>基礎路程：約 ${travelDays(d)} 日</p><button onclick="travel('${to}',${d})">出發</button></div>`).join("")||"<p>目前沒有已知道路。先探索或打聽情報。</p>"}`}
+if(tab==="explore"){let ex=G.explore[G.place]||0;b.innerHTML=`<h3>探索度：${ex}%</h3><div class="progress"><span style="width:${ex}%"></span></div><p class="muted">探索可能發現採集點、NPC、隱藏道路、洞府、遺跡或危險。</p><button class="primary" onclick="explore()">探索附近</button>`}
+if(tab==="city"){b.innerHTML=`<div class="row"><button onclick="localAction('market')">逛坊市</button><button onclick="localAction('inn')">酒樓打聽消息</button><button onclick="localAction('npc')">拜訪人物</button>${G.sect&&G.place===sectPlace()?'<button onclick="localAction(\'sect\')">處理宗門事務</button>':""}</div>`}
+if(tab==="cult"){b.innerHTML=`<h3>${G.realm}</h3><p>修為 ${G.cult}/100</p><div class="progress"><span style="width:${Math.min(100,G.cult)}%"></span></div><p>閉關仍然存在，但只是你眾多人生選擇之一。</p><div class="row"><button onclick="cultivate(10)">打坐十日</button><button onclick="cultivate(30)">閉關一月</button><button onclick="cultivate(90)">閉關三月</button></div>`}
+if(tab==="bag"){b.innerHTML=`<h3>持有物</h3>${G.inventory.map(x=>`<span class="pill">${x}</span>`).join("")}<p>下品靈石：${G.spiritStones}</p>`}}
+function sectPlace(){return {"太虛劍宗":"太虛劍宗","藥王谷":"藥王谷","神策府":"神策府","梵天禪院":"梵天禪院"}[G.sect]}
+function travelDays(base){return Math.max(1,Math.round(base*(1.25-G.stats.spd*.035)))}
+function travel(to,base){let days=travelDays(base);let from=G.place;advanceDays(days);travelEncounter(from,to);G.place=to;discover(to);Object.keys(PLACES[to]?.links||{}).forEach(x=>{if(chance(.65))discover(x)});addLog(`你從${from}抵達${to}，路程${days}日。`,"info");render()}
+function travelEncounter(from,to){let roll=Math.random();if(roll<.22){let foe=pick(["低階妖獸","攔路散修","山賊"]);if(chance(.48+G.stats.str*.025+G.stats.spd*.02)){let loot=rand(6)+1;G.spiritStones+=loot;addLog(`旅途中遭遇${foe}。你成功脫身並得到價值約${loot}靈石的戰利品。`,"good")}else addLog(`旅途中遭遇${foe}，你受了傷，只能狼狽撤退。`,"bad")}else if(roll<.42){let n=pick(["行腳商人","宗門弟子","落魄散修","採藥人"]);addLog(`途中遇見一名${n}，短暫同行了一段路。`,"info")}else if(roll<.55){G.flags.clue=(G.flags.clue||0)+1;addLog("你在路旁發現不尋常的戰鬥痕跡，似乎有人刻意掩蓋了去向。","rare")}else if(roll<.66){addLog("一路風平浪靜。你第一次注意到，大荒域遠比地圖上看起來遼闊。")}}
+function explore(){let p=PLACES[G.place],danger=p?.danger||0;let days=rand(5)+2;advanceDays(days);G.explore[G.place]=Math.min(100,(G.explore[G.place]||0)+rand(9)+5+Math.floor(G.stats.wis/3));let r=Math.random();
+if(r<.18+G.stats.wis*.01){let hidden=pick(["無名山洞","廢棄修士洞府","古老石碑","隱蔽藥谷"]);G.inventory.push(`線索：${hidden}`);addLog(`探索${G.place}時，你發現「${hidden}」。這裡可能還藏著更深的秘密。`,"rare")}
+else if(r<.42){let loot=rand(8)+2;G.spiritStones+=loot;addLog(`你在${G.place}探索${days}日，採集到價值${loot}靈石的材料。`,"good")}
+else if(r<.62&&danger>0){if(chance(.58+(G.stats.str+G.stats.spd)/80-danger*.06)){G.spiritStones+=danger*3;addLog(`探索途中遭遇妖獸，你成功擊退牠。`,"good")}else addLog("你遭遇超出預期的危險，只能提前撤退。","bad")}
+else {let stranger=pick(["沉默劍修","年輕女修","老散修","受傷獵妖人"]);addLog(`探索途中，你遇見一名${stranger}。你們交換了幾句情報。`,"info")}render()}
+function localAction(x){if(x==="market"){advanceDays(1);let cost=Math.min(G.spiritStones,3);G.spiritStones-=cost;if(cost){G.inventory.push("低階療傷丹");addLog(`你在${G.place}坊市花${cost}靈石補充物資。`)}else addLog("你逛了一圈坊市，但囊中羞澀。")}
+if(x==="inn"){advanceDays(1);let nearby=Object.keys(PLACES[G.place]?.links||{});if(nearby.length){let q=pick(nearby);discover(q);addLog(`酒樓裡有人談起${q}最近的消息。`,"info")}else addLog("你聽了一整晚，多半只是酒客吹牛。")}
+if(x==="npc"){advanceDays(1);let f=relation();addLog(f.alive?`你打聽到故人${f.name}最近仍然活躍於世。`:`你沒有找到想見的人。`,"info")}
+if(x==="sect"){advanceDays(2);G.spiritStones+=5;addLog("你完成一項簡單宗門差事，得到5枚下品靈石。","good")}render()}
+function cultivate(days){advanceDays(days);let mult=G.roots.length===1?1.35:G.roots.length===2?1.15:G.roots.length===3?1:.82;let gain=Math.max(1,Math.round((G.stats.qi+G.stats.wis/2)*mult*days/28));G.cult+=gain;addLog(`修煉${days}日，修為增加${gain}。`);while(G.cult>=100&&G.realm!=="煉氣大圓滿"){G.cult-=100;let a=["一","二","三","四","五","六","七","八","九"],m=G.realm.match(/煉氣(.)層/);if(m){let i=a.indexOf(m[1]);if(i<8){G.realm=`煉氣${a[i+1]}層`;addLog(`突破至${G.realm}！`,"good")}else{G.realm="煉氣大圓滿";G.cult=100}}}worldTick(days);render()}
+function worldTick(days){if(days>=30&&chance(Math.min(.7,days/180))){addLog(`【天下消息】${pick(["鎮妖關妖獸活動增加","天元城將舉辦修士拍賣會","南疆出現新的秘境傳聞","北境有年輕劍修聲名鵲起","正魔兩道摩擦加劇"])}。`,"info")}}
+function die(t){G.alive=false;addLog(t,"bad");render()} function death(){setScreen(`<div class="title">人物生平</div><p>${G.name}，卒於${fmtDate()}，享年${fmtAge()}。</p><button class="primary" onclick="newGame()">開始下一世</button>`)}
+function saveGame(){localStorage.setItem("dahuang03",JSON.stringify(G));addLog("遊戲已儲存。","info");render()} function loadGame(){let s=localStorage.getItem("dahuang03");if(!s)return alert("沒有 Alpha 0.3 存檔");G=JSON.parse(s);render()} function newGame(){if(confirm("開始新局？")){G=fresh();render()}}
+G=fresh();render();
+</script>
+</body></html>
